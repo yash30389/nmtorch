@@ -22,9 +22,9 @@ View logs with `docker compose logs -f`; stop the app with `docker compose down`
 - Refreshes every four seconds; traffic rates are calculated in the browser from consecutive counter snapshots.
 - Wi-Fi access-point discovery and Bluetooth discovery are explicitly unavailable. Docker Desktop does not pass host radio hardware or its scan results into this container.
 - The optional visual monitor starts only after you affirm that this is your space and people present are informed and consenting. The browser separately requests camera permission; audio is never requested.
-- Camera frames are sampled at a low rate and sent only to this loopback-bound container for face-presence estimates and common-object labels, then discarded. The browser temporarily holds one small prior frame in memory for coarse scene-motion detection and clears it when stopped. No images, video, timestamps, or event history are persisted.
-- Face detection does not identify people. Object labels can be wrong. Motion is a change between consecutive frames, not a person's action or intent. Only the current result is displayed.
-- The bundled MobileNet-SSD model recognizes a limited set of common Pascal VOC categories; it does not identify arbitrary objects. Visual analysis runs in the container and requires CPU/memory, unlike the passive network dashboard.
+- Camera frames are sampled at a low rate and sent only to this loopback-bound container for object labels, then discarded. The browser temporarily holds the prior detected boxes and one small frame in memory to estimate motion and clears them when stopped. Timestamped summaries are produced every five seconds and kept only in the browser's memory; no images, video, or event history are persisted.
+- MobileNet-SSD is filtered by confidence and per-class non-maximum suppression to reduce weak and duplicate boxes. Object labels can still be wrong. The timeline describes changes in detected box position only; it does not classify actions or intent, and camera movement can look like object movement.
+- The bundled MobileNet-SSD model recognizes only 20 common Pascal VOC categories; unsupported objects are not labeled. Visual analysis runs in the container and requires CPU/memory, unlike the passive network dashboard.
 - Does not jam, interfere with, pair with, or control radios or other devices.
 - Makes no outbound telemetry calls and stores no application data.
 
@@ -34,7 +34,7 @@ This dashboard observes the container's network namespace, not all devices on th
 
 Compose binds the web port to `127.0.0.1`, drops Linux capabilities, runs as a non-root user, enables a read-only root filesystem, and sets CPU, memory, process, and temporary-filesystem limits. No host devices, privileged mode, or host mounts are required. Python computer-vision dependencies and the pinned model are installed/downloaded only while building the Docker image, never on the host. Browser frames are posted to the same-origin local service; network frame requests reject cross-origin origins.
 
-The model may mislabel faces, people, or objects. Do not use it to identify, track, make decisions about, or infer intent from people. Ask everyone present for informed consent before enabling the camera, and stop the camera when monitoring is no longer needed.
+The model may mislabel objects and movement. It does not identify people or classify their actions or emotions. Ask everyone present for informed consent before enabling the camera, and stop the camera when monitoring is no longer needed.
 
 Third-party model attribution and license information is in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 

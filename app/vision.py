@@ -28,6 +28,9 @@ MODEL_CLASSES = (
     "train",
     "tv",
 )
+OBJECT_CONFIDENCE_THRESHOLD = 0.60
+OBJECT_NMS_THRESHOLD = 0.45
+MIN_OBJECT_SIDE_PIXELS = 6
 JPEG_START_OF_FRAME_MARKERS = {
     0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF
 }
@@ -69,14 +72,70 @@ def _read_jpeg_dimensions(frame_bytes):
     raise ValueError("The frame is not a valid JPEG image")
 
 
+def decode_object_detections(prediction, frame_width, frame_height):
+    candidates_by_class = {}
+    for item in np.asarray(prediction).reshape(-1, 7):
+        if not np.isfinite(item[1]):
+            continue
+        confidence = float(item[2])
+        class_index = int(item[1])
+        if (
+            not np.isfinite(confidence)
+            or confidence < OBJECT_CONFIDENCE_THRESHOLD
+            or class_index <= 0
+            or class_index >= len(MODEL_CLASSES)
+        ):
+            continue
+
+        coordinates = item[3:7]
+        if not np.all(np.isfinite(coordinates)):
+            continue
+        left = max(0, min(frame_width, int(coordinates[0] * frame_width)))
+        top = max(0, min(frame_height, int(coordinates[1] * frame_height)))
+        right = max(left, min(frame_width, int(coordinates[2] * frame_width)))
+        bottom = max(top, min(frame_height, int(coordinates[3] * frame_height)))
+        width = right - left
+        height = bottom - top
+        if width < MIN_OBJECT_SIDE_PIXELS or height < MIN_OBJECT_SIDE_PIXELS:
+            continue
+        candidates_by_class.setdefault(class_index, []).append(
+            (left, top, width, height, confidence)
+        )
+
+    detections = []
+    for class_index, candidates in candidates_by_class.items():
+        boxes = [candidate[:4] for candidate in candidates]
+        confidences = [candidate[4] for candidate in candidates]
+        selected = cv2.dnn.NMSBoxes(
+            boxes,
+            confidences,
+            OBJECT_CONFIDENCE_THRESHOLD,
+            OBJECT_NMS_THRESHOLD,
+        )
+        if selected is None:
+            continue
+        for selected_index in np.asarray(selected, dtype=np.intp).reshape(-1):
+            left, top, width, height, _confidence = candidates[int(selected_index)]
+            detections.append(
+                (
+                    confidence,
+                    {
+                        "label": MODEL_CLASSES[class_index],
+                        "x": left / frame_width,
+                        "y": top / frame_height,
+                        "width": width / frame_width,
+                        "height": height / frame_height,
+                    },
+                )
+            )
+
+    ordered = sorted(detections, key=lambda item: item[0], reverse=True)
+    return [detection for _confidence, detection in ordered[:12]]
+
+
 class VisionAnalyzer:
     def __init__(self):
         cv2.setNumThreads(1)
-        cascade_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
-        self.face_detector = cv2.CascadeClassifier(str(cascade_path))
-        if self.face_detector.empty():
-            raise RuntimeError("The bundled face-presence classifier could not be loaded")
-
         model_dir = Path(os.environ.get("NMTORCH_MODEL_DIR", "/opt/nmtorch"))
         prototxt = model_dir / "MobileNetSSD_deploy.prototxt"
         weights = model_dir / "mobilenet_iter_73000.caffemodel"
@@ -93,17 +152,6 @@ class VisionAnalyzer:
         if frame is None or frame.size == 0:
             raise ValueError("The frame is not a valid JPEG image")
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = self.face_detector.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=6,
-            minSize=(24, 24),
-        )
-        detections = []
-        for x, y, face_width, face_height in faces[:10]:
-            detections.append(self._box("face present", x, y, face_width, face_height, width, height))
-
         blob = cv2.dnn.blobFromImage(
             cv2.resize(frame, (300, 300)),
             scalefactor=0.007843,
@@ -116,41 +164,15 @@ class VisionAnalyzer:
         except cv2.error as error:
             raise RuntimeError("The bundled object-detection model could not process this frame") from error
         seen_objects = {}
-        for item in prediction[0, 0]:
-            confidence = float(item[2])
-            class_index = int(item[1])
-            if confidence < 0.55 or class_index <= 0 or class_index >= len(MODEL_CLASSES):
-                continue
-            label = MODEL_CLASSES[class_index]
-            left = max(0, min(width, int(item[3] * width)))
-            top = max(0, min(height, int(item[4] * height)))
-            right = max(left, min(width, int(item[5] * width)))
-            bottom = max(top, min(height, int(item[6] * height)))
-            if right == left or bottom == top:
-                continue
+        detections = decode_object_detections(prediction, width, height)
+        for detection in detections:
+            label = detection["label"]
             seen_objects[label] = seen_objects.get(label, 0) + 1
-            detections.append(
-                self._box(label, left, top, right - left, bottom - top, width, height, confidence)
-            )
 
         return {
-            "faces_present": len(faces),
             "objects": [
                 {"label": label, "count": count} for label, count in sorted(seen_objects.items())
             ],
-            "detections": detections[:20],
-            "notice": "Labels are estimates, not identity or intent.",
+            "detections": detections,
+            "notice": "Limited object labels are estimates; position change does not identify an action.",
         }
-
-    @staticmethod
-    def _box(label, x, y, box_width, box_height, frame_width, frame_height, confidence=None):
-        result = {
-            "label": label,
-            "x": x / frame_width,
-            "y": y / frame_height,
-            "width": box_width / frame_width,
-            "height": box_height / frame_height,
-        }
-        if confidence is not None:
-            result["confidence"] = round(confidence, 2)
-        return result

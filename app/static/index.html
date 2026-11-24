@@ -56,7 +56,7 @@
 
           <section class="visual-panel" id="visual">
             <div class="section-heading visual-heading">
-              <div><h2>Consent-based visual monitor</h2><p>Local camera preview with live-only, approximate detections</p></div>
+              <div><h2>Consent-based object monitor</h2><p>Local camera preview with supported labels and short-term position changes</p></div>
               <span id="camera-status" class="section-badge">CAMERA OFF</span>
             </div>
             <div class="camera-grid">
@@ -74,9 +74,11 @@
                 <p id="camera-message" class="camera-message" role="status" aria-live="polite">No video is saved. Frames are processed locally and discarded.</p>
               </div>
               <div class="scene-column">
-                <div class="scene-title"><span>LIVE SCENE SUMMARY</span><span class="section-badge">NO EVENT HISTORY</span></div>
-                <div id="scene-results" class="scene-results"><div class="empty-state">Start the camera to see live-only estimates.</div></div>
-                <div class="scene-disclaimer">Face detection means presence only—not identity. Object labels can be wrong. “Motion” describes frame changes, not a person’s actions or intent. One small prior frame stays in browser memory only until you stop the camera.</div>
+                <div class="scene-title"><span>CURRENT OBJECTS</span><span class="section-badge">LIVE ESTIMATES</span></div>
+                <div id="scene-results" class="scene-results"><div class="empty-state">Start the camera to detect supported object labels.</div></div>
+                <div class="scene-title timeline-heading"><span>5-SECOND UPDATES</span><span class="section-badge">MEMORY ONLY</span></div>
+                <div id="scene-timeline" class="scene-timeline" aria-live="polite"><div class="empty-state">Timestamped movement summaries appear every five seconds.</div></div>
+                <div class="scene-disclaimer">Labels are limited to 20 common categories and can be wrong. Movement only describes changes in detected box position; camera shake can look like object movement. This does not classify actions or intent. Updates are kept in browser memory and cleared when stopped.</div>
               </div>
             </div>
           </section>

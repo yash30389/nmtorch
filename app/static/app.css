@@ -110,6 +110,12 @@ h1 span { color: #8ca09a; }
 .scene-title .section-badge { font-size: 7px; }
 .scene-results { display: grid; gap: 0; min-height: 119px; padding: 0 11px; border: 1px solid var(--border); border-radius: 7px; background: #131b1c; }
 .scene-results .empty-state { align-self: center; border: 0; background: transparent; padding: 14px 0; font-size: 9px; }
+.timeline-heading { margin: 14px 0 8px; }
+.scene-timeline { display: grid; max-height: 258px; gap: 6px; overflow-y: auto; }
+.scene-timeline > .empty-state { border: 1px solid var(--border); border-radius: 7px; background: #131b1c; font-size: 9px; }
+.timeline-item { display: grid; grid-template-columns: 67px minmax(0, 1fr); gap: 9px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 7px; background: #131b1c; }
+.timeline-time { color: #8fd0a8; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 9px; }
+.timeline-description { color: #c4cfca; font-size: 9px; line-height: 1.55; }
 .scene-row { display: grid; grid-template-columns: minmax(80px, .8fr) minmax(0, 1.2fr); gap: 10px; align-items: center; min-height: 39px; border-bottom: 1px solid #23302e; }
 .scene-row:last-child { border-bottom: 0; }
 .scene-row span { color: #86948e; font-size: 9px; }

@@ -8,6 +8,7 @@ import urllib.request
 from unittest.mock import patch
 
 from app.server import DashboardServer, DashboardHandler, _read_neighbors, _read_traffic_counters
+from app.vision import decode_object_detections
 
 
 class NetworkParsingTests(unittest.TestCase):
@@ -140,7 +141,6 @@ class HttpEndpointTests(unittest.TestCase):
     @patch(
         "app.server.analyze_camera_frame",
         return_value={
-            "faces_present": 0,
             "objects": [],
             "detections": [],
         },
@@ -156,7 +156,6 @@ class HttpEndpointTests(unittest.TestCase):
         )
         with urllib.request.urlopen(request) as response:
             result = json.load(response)
-        self.assertEqual(result["faces_present"], 0)
         self.assertNotIn("timestamp", result)
         analyze.assert_called_once()
 
@@ -183,9 +182,35 @@ class VisionAnalyzerTests(unittest.TestCase):
         ok, encoded = cv2.imencode(".jpg", np.zeros((240, 320, 3), dtype=np.uint8))
         self.assertTrue(ok)
         result = self.analyzer.analyze(encoded.tobytes())
-        self.assertEqual(result["faces_present"], 0)
         self.assertEqual(result["objects"], [])
         self.assertEqual(result["detections"], [])
+
+    def test_object_decoder_filters_weak_boxes_and_suppresses_duplicates(self):
+        prediction = np.array(
+            [[[
+                [0, 15, 0.92, 0.10, 0.10, 0.50, 0.50],
+                [0, 15, 0.83, 0.11, 0.11, 0.49, 0.49],
+                [0, 7, 0.59, 0.10, 0.10, 0.50, 0.50],
+                [0, 99, 0.97, 0.10, 0.10, 0.50, 0.50],
+                [0, 5, 0.97, 0.20, 0.20, 0.21, 0.21],
+            ]]],
+            dtype=np.float32,
+        )
+        detections = decode_object_detections(prediction, 320, 240)
+        self.assertEqual(len(detections), 1)
+        self.assertEqual(detections[0]["label"], "person")
+        self.assertAlmostEqual(detections[0]["x"], 0.1)
+
+    def test_object_decoder_keeps_overlapping_different_classes(self):
+        prediction = np.array(
+            [[[
+                [0, 15, 0.92, 0.10, 0.10, 0.50, 0.50],
+                [0, 7, 0.88, 0.10, 0.10, 0.50, 0.50],
+            ]]],
+            dtype=np.float32,
+        )
+        detections = decode_object_detections(prediction, 320, 240)
+        self.assertEqual({item["label"] for item in detections}, {"person", "car"})
 
     def test_invalid_or_oversized_frames_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "valid JPEG"):
