@@ -14,6 +14,10 @@ STATIC_FILES = {
     "/static/app.js": ("app.js", "text/javascript; charset=utf-8"),
 }
 POLL_INTERVAL_SECONDS = 4
+MAX_CAMERA_FRAME_BYTES = 256 * 1024
+CAMERA_FRAME_CONTENT_TYPE = "image/jpeg"
+_camera_analyzer = None
+_camera_lock = threading.Lock()
 
 
 def _read_optional(path):
@@ -114,6 +118,16 @@ def get_status():
     }
 
 
+def analyze_camera_frame(frame):
+    global _camera_analyzer
+    with _camera_lock:
+        if _camera_analyzer is None:
+            from app.vision import VisionAnalyzer
+
+            _camera_analyzer = VisionAnalyzer()
+        return _camera_analyzer.analyze(frame)
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     server_version = "NMTorch"
     sys_version = ""
@@ -135,6 +149,46 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         self._send_json({"error": "Not found"}, status=404)
 
+    def do_POST(self):
+        route = urlsplit(self.path).path
+        if route != "/api/camera/analyze":
+            self._send_json({"error": "Not found"}, status=404)
+            return
+        if not self._is_same_origin_request():
+            self._send_json({"error": "Same-origin requests only"}, status=403)
+            return
+        if self.headers.get_content_type() != CAMERA_FRAME_CONTENT_TYPE:
+            self._send_json({"error": "Expected an image/jpeg frame"}, status=415)
+            return
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._send_json({"error": "Invalid Content-Length"}, status=400)
+            return
+        if content_length <= 0 or content_length > MAX_CAMERA_FRAME_BYTES:
+            self._send_json({"error": "Frame must be between 1 byte and 256 KiB"}, status=413)
+            return
+        frame_bytes = self.rfile.read(content_length)
+        if len(frame_bytes) != content_length:
+            self._send_json({"error": "Incomplete camera frame"}, status=400)
+            return
+        try:
+            result = analyze_camera_frame(frame_bytes)
+        except ValueError as error:
+            self._send_json({"error": str(error)}, status=422)
+            return
+        except RuntimeError as error:
+            self._send_json({"error": str(error)}, status=503)
+            return
+        self._send_json(result)
+
+    def _is_same_origin_request(self):
+        origin = self.headers.get("Origin")
+        if not origin:
+            return False
+        parsed_origin = urlsplit(origin)
+        return parsed_origin.scheme in ("http", "https") and parsed_origin.netloc == self.headers.get("Host")
+
     def _send_json(self, payload, status=200):
         body = json.dumps(payload).encode("utf-8")
         self._send(body, "application/json; charset=utf-8", status)
@@ -151,6 +205,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'")
         self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Permissions-Policy", "camera=(self), microphone=(), geolocation=()")
         self.end_headers()
         self.wfile.write(body)
 

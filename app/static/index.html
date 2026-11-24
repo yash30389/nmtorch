@@ -20,6 +20,7 @@
           <a class="nav-item active" href="#overview" aria-current="page"><span class="nav-icon">◈</span>Overview</a>
           <a class="nav-item" href="#interfaces"><span class="nav-icon">⌁</span>Interfaces</a>
           <a class="nav-item" href="#devices"><span class="nav-icon">▦</span>Devices</a>
+          <a class="nav-item" href="#visual"><span class="nav-icon">◉</span>Visual monitor</a>
           <a class="nav-item" href="#radios"><span class="nav-icon">⌁</span>Radio access</a>
         </nav>
         <div class="sidebar-bottom">
@@ -52,6 +53,33 @@
             <span><strong>Container-scoped view.</strong> Docker Desktop isolates this app from Windows radios. Only information exposed inside this container is shown.</span>
             <span class="scope-tag">READ ONLY</span>
           </div>
+
+          <section class="visual-panel" id="visual">
+            <div class="section-heading visual-heading">
+              <div><h2>Consent-based visual monitor</h2><p>Local camera preview with live-only, approximate detections</p></div>
+              <span id="camera-status" class="section-badge">CAMERA OFF</span>
+            </div>
+            <div class="camera-grid">
+              <div class="camera-column">
+                <div class="camera-frame">
+                  <video id="camera-video" autoplay muted playsinline aria-label="Live camera preview"></video>
+                  <canvas id="camera-overlay" width="320" height="240" aria-hidden="true"></canvas>
+                  <div id="camera-placeholder" class="camera-placeholder"><span class="camera-placeholder-icon">◉</span><strong>Camera is off</strong><span>Start the camera when you are ready.</span></div>
+                  <span id="camera-live" class="camera-live"><span class="live-dot"></span> LIVE · LOCAL</span>
+                </div>
+                <div class="camera-controls">
+                  <label class="consent-check"><input id="camera-consent" type="checkbox"><span>I confirm this is my space and everyone present is informed and consenting.</span></label>
+                  <div class="camera-buttons"><button id="start-camera" class="camera-button primary" type="button">Start camera</button><button id="stop-camera" class="camera-button stop" type="button" hidden>Stop camera</button></div>
+                </div>
+                <p id="camera-message" class="camera-message" role="status" aria-live="polite">No video is saved. Frames are processed locally and discarded.</p>
+              </div>
+              <div class="scene-column">
+                <div class="scene-title"><span>LIVE SCENE SUMMARY</span><span class="section-badge">NO EVENT HISTORY</span></div>
+                <div id="scene-results" class="scene-results"><div class="empty-state">Start the camera to see live-only estimates.</div></div>
+                <div class="scene-disclaimer">Face detection means presence only—not identity. Object labels can be wrong. “Motion” describes frame changes, not a person’s actions or intent. One small prior frame stays in browser memory only until you stop the camera.</div>
+              </div>
+            </div>
+          </section>
 
           <div class="metrics-grid">
             <article class="metric-card">
