@@ -31,6 +31,26 @@ MODEL_CLASSES = (
 OBJECT_CONFIDENCE_THRESHOLD = 0.60
 OBJECT_NMS_THRESHOLD = 0.45
 MIN_OBJECT_SIDE_PIXELS = 6
+MAX_POSE_DETECTIONS = 5
+POSE_KEYPOINT_NAMES = (
+    "nose",
+    "left_eye",
+    "right_eye",
+    "left_ear",
+    "right_ear",
+    "left_shoulder",
+    "right_shoulder",
+    "left_elbow",
+    "right_elbow",
+    "left_wrist",
+    "right_wrist",
+    "left_hip",
+    "right_hip",
+    "left_knee",
+    "right_knee",
+    "left_ankle",
+    "right_ankle",
+)
 JPEG_START_OF_FRAME_MARKERS = {
     0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF
 }
@@ -133,15 +153,98 @@ def decode_object_detections(prediction, frame_width, frame_height):
     return [detection for _confidence, detection in ordered[:12]]
 
 
+def decode_movenet_pose(prediction, crop_rect, frame_width, frame_height):
+    landmarks = np.asarray(prediction, dtype=np.float32).reshape(-1, 3)
+    if len(landmarks) != len(POSE_KEYPOINT_NAMES):
+        raise ValueError("The pose model returned an unsupported landmark count")
+    crop_left, crop_top, crop_right, crop_bottom = crop_rect
+    crop_width = crop_right - crop_left
+    crop_height = crop_bottom - crop_top
+    if crop_width <= 0 or crop_height <= 0:
+        raise ValueError("The person crop is empty")
+
+    keypoints = []
+    for name, (y, x, score) in zip(POSE_KEYPOINT_NAMES, landmarks):
+        if not np.all(np.isfinite((x, y, score))):
+            continue
+        keypoints.append(
+            {
+                "name": name,
+                "x": max(0.0, min(1.0, (crop_left + float(x) * crop_width) / frame_width)),
+                "y": max(0.0, min(1.0, (crop_top + float(y) * crop_height) / frame_height)),
+                "score": max(0.0, min(1.0, float(score))),
+            }
+        )
+    return keypoints
+
+
 class VisionAnalyzer:
     def __init__(self):
+        from ai_edge_litert.interpreter import Interpreter
+
         cv2.setNumThreads(1)
         model_dir = Path(os.environ.get("NMTORCH_MODEL_DIR", "/opt/nmtorch"))
         prototxt = model_dir / "MobileNetSSD_deploy.prototxt"
         weights = model_dir / "mobilenet_iter_73000.caffemodel"
+        pose_model = model_dir / "movenet_lightning_float16.tflite"
         if not prototxt.is_file() or not weights.is_file():
             raise RuntimeError("The bundled object-detection model is missing")
+        if not pose_model.is_file():
+            raise RuntimeError("The bundled human-pose model is missing")
         self.object_detector = cv2.dnn.readNetFromCaffe(str(prototxt), str(weights))
+        self.pose_interpreter = Interpreter(model_path=str(pose_model), num_threads=2)
+        self.pose_interpreter.allocate_tensors()
+        self.pose_input = self.pose_interpreter.get_input_details()[0]
+        self.pose_output = self.pose_interpreter.get_output_details()[0]
+        self.pose_input_height = int(self.pose_input["shape"][1])
+        self.pose_input_width = int(self.pose_input["shape"][2])
+
+    def _pose_for_person(self, frame, detection):
+        frame_height, frame_width = frame.shape[:2]
+        left = int(detection["x"] * frame_width)
+        top = int(detection["y"] * frame_height)
+        right = left + int(detection["width"] * frame_width)
+        bottom = top + int(detection["height"] * frame_height)
+        box_width = max(right - left, bottom - top)
+        side = max(1, int(box_width * 1.25))
+        center_x = (left + right) // 2
+        center_y = (top + bottom) // 2
+        crop_left = center_x - side // 2
+        crop_top = center_y - side // 2
+        crop_right = crop_left + side
+        crop_bottom = crop_top + side
+
+        bounded_left = max(0, crop_left)
+        bounded_top = max(0, crop_top)
+        bounded_right = min(frame_width, crop_right)
+        bounded_bottom = min(frame_height, crop_bottom)
+        crop = frame[bounded_top:bounded_bottom, bounded_left:bounded_right]
+        if crop.size == 0:
+            return []
+        padded = cv2.copyMakeBorder(
+            crop,
+            max(0, -crop_top),
+            max(0, crop_bottom - frame_height),
+            max(0, -crop_left),
+            max(0, crop_right - frame_width),
+            cv2.BORDER_CONSTANT,
+            value=(0, 0, 0),
+        )
+        resized = cv2.resize(padded, (self.pose_input_width, self.pose_input_height))
+        rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+        tensor = np.expand_dims(rgb.astype(self.pose_input["dtype"]), axis=0)
+        self.pose_interpreter.set_tensor(self.pose_input["index"], tensor)
+        try:
+            self.pose_interpreter.invoke()
+        except RuntimeError as error:
+            raise RuntimeError("The bundled pose model could not process this frame") from error
+        prediction = self.pose_interpreter.get_tensor(self.pose_output["index"])
+        return decode_movenet_pose(
+            prediction,
+            (crop_left, crop_top, crop_right, crop_bottom),
+            frame_width,
+            frame_height,
+        )
 
     def analyze(self, frame_bytes):
         width, height = _read_jpeg_dimensions(frame_bytes)
@@ -165,14 +268,19 @@ class VisionAnalyzer:
             raise RuntimeError("The bundled object-detection model could not process this frame") from error
         seen_objects = {}
         detections = decode_object_detections(prediction, width, height)
+        pose_count = 0
         for detection in detections:
             label = detection["label"]
             seen_objects[label] = seen_objects.get(label, 0) + 1
+            if label == "person" and pose_count < MAX_POSE_DETECTIONS:
+                detection["pose"] = self._pose_for_person(frame, detection)
+                pose_count += 1
 
         return {
             "objects": [
                 {"label": label, "count": count} for label, count in sorted(seen_objects.items())
             ],
             "detections": detections,
-            "notice": "Limited object labels are estimates; position change does not identify an action.",
+            "people_count": seen_objects.get("person", 0),
+            "notice": "Object labels and pose-based activity estimates may be inaccurate.",
         }

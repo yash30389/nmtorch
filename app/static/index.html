@@ -4,146 +4,102 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#101718">
-    <title>NMTorch — Network observability</title>
+    <title>NMTorch — Visual monitor</title>
     <link rel="stylesheet" href="/static/app.css">
     <script src="/static/app.js" defer></script>
   </head>
   <body>
-    <div class="shell">
-      <aside class="sidebar">
-        <a class="brand" href="/" aria-label="NMTorch home">
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="NMTorch visual monitor home">
           <span class="brand-mark" aria-hidden="true">N</span>
-          <span>NMTorch<small>NETWORK OBSERVABILITY</small></span>
+          <span>NMTorch<small>VISUAL MONITOR</small></span>
         </a>
-        <div class="nav-label">WORKSPACE</div>
-        <nav class="navigation" aria-label="Main navigation">
-          <a class="nav-item active" href="#overview" aria-current="page"><span class="nav-icon">◈</span>Overview</a>
-          <a class="nav-item" href="#interfaces"><span class="nav-icon">⌁</span>Interfaces</a>
-          <a class="nav-item" href="#devices"><span class="nav-icon">▦</span>Devices</a>
-          <a class="nav-item" href="#visual"><span class="nav-icon">◉</span>Visual monitor</a>
-          <a class="nav-item" href="#radios"><span class="nav-icon">⌁</span>Radio access</a>
-        </nav>
-        <div class="sidebar-bottom">
-          <span class="live-dot"></span>
-          <span>Local session<small>Data stays on this machine</small></span>
+        <span class="privacy-pill"><span aria-hidden="true">◇</span> LOCAL PROCESSING · NO RECORDING</span>
+      </header>
+
+      <section class="content">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow"><span class="live-dot"></span> CONSENT-BASED · CPU-ONLY</div>
+            <h1>Understand the scene, <span>locally.</span></h1>
+            <p class="subtitle">People, body poses, anonymous tracks, objects, and short-lived movement estimates.</p>
+          </div>
+          <span id="camera-status" class="section-badge">CAMERA OFF</span>
         </div>
-      </aside>
 
-      <main class="main">
-        <header class="topbar">
-          <div class="breadcrumb">Workspace <span>/</span> Overview</div>
-          <div class="topbar-right">
-            <span class="privacy-pill"><span class="privacy-icon">◇</span> LOCAL ONLY</span>
-            <button id="refresh-button" class="refresh-button" type="button"><span aria-hidden="true">↻</span> Refresh</button>
-          </div>
-        </header>
+        <div class="privacy-banner">
+          <strong>Your camera, your control.</strong>
+          Browser permission and the confirmation below are required. Frames are analyzed in this local container, then discarded. No images, video, or event history are saved.
+        </div>
 
-        <section class="content" id="overview">
-          <div class="page-heading">
-            <div>
-              <div class="eyebrow"><span class="live-dot"></span> NETWORK OVERVIEW</div>
-              <h1>Your network, <span>at a glance.</span></h1>
-              <p class="subtitle">A read-only view of the interfaces and neighbor cache visible to this app.</p>
-            </div>
-            <div class="last-updated">LAST UPDATED <span id="last-updated">Waiting for first read</span></div>
-          </div>
-
-          <div class="scope-banner">
-            <span class="scope-symbol">i</span>
-            <span><strong>Container-scoped view.</strong> Docker Desktop isolates this app from Windows radios. Only information exposed inside this container is shown.</span>
-            <span class="scope-tag">READ ONLY</span>
-          </div>
-
-          <section class="visual-panel" id="visual">
-            <div class="section-heading visual-heading">
-              <div><h2>Consent-based object monitor</h2><p>Local camera preview with supported labels and short-term position changes</p></div>
-              <span id="camera-status" class="section-badge">CAMERA OFF</span>
-            </div>
-            <div class="camera-grid">
-              <div class="camera-column">
-                <div class="camera-frame">
-                  <video id="camera-video" autoplay muted playsinline aria-label="Live camera preview"></video>
-                  <canvas id="camera-overlay" width="320" height="240" aria-hidden="true"></canvas>
-                  <div id="camera-placeholder" class="camera-placeholder"><span class="camera-placeholder-icon">◉</span><strong>Camera is off</strong><span>Start the camera when you are ready.</span></div>
-                  <span id="camera-live" class="camera-live"><span class="live-dot"></span> LIVE · LOCAL</span>
+        <section class="monitor-panel" aria-label="Visual monitoring controls and results">
+          <div class="monitor-grid">
+            <div class="camera-column">
+              <div class="camera-frame">
+                <video id="camera-video" autoplay muted playsinline aria-label="Live camera preview"></video>
+                <canvas id="camera-overlay" width="320" height="240" aria-hidden="true"></canvas>
+                <div id="face-focus-panel" class="face-focus" hidden>
+                  <canvas id="face-focus" width="128" height="128" aria-label="Temporary head crop; no expression analysis"></canvas>
+                  <span>HEAD FOCUS · NO EXPRESSION ANALYSIS</span>
                 </div>
-                <div class="camera-controls">
-                  <label class="consent-check"><input id="camera-consent" type="checkbox"><span>I confirm this is my space and everyone present is informed and consenting.</span></label>
-                  <div class="camera-buttons"><button id="start-camera" class="camera-button primary" type="button">Start camera</button><button id="stop-camera" class="camera-button stop" type="button" hidden>Stop camera</button></div>
+                <div id="camera-placeholder" class="camera-placeholder">
+                  <span class="camera-placeholder-icon" aria-hidden="true">◉</span>
+                  <strong>Camera is off</strong>
+                  <span>Start monitoring when everyone present has agreed.</span>
                 </div>
-                <p id="camera-message" class="camera-message" role="status" aria-live="polite">No video is saved. Frames are processed locally and discarded.</p>
+                <span id="camera-live" class="camera-live"><span class="live-dot"></span> LIVE · LOCAL</span>
               </div>
-              <div class="scene-column">
-                <div class="scene-title"><span>CURRENT OBJECTS</span><span class="section-badge">LIVE ESTIMATES</span></div>
-                <div id="scene-results" class="scene-results"><div class="empty-state">Start the camera to detect supported object labels.</div></div>
-                <div class="scene-title timeline-heading"><span>5-SECOND UPDATES</span><span class="section-badge">MEMORY ONLY</span></div>
-                <div id="scene-timeline" class="scene-timeline" aria-live="polite"><div class="empty-state">Timestamped movement summaries appear every five seconds.</div></div>
-                <div class="scene-disclaimer">Labels are limited to 20 common categories and can be wrong. Movement only describes changes in detected box position; camera shake can look like object movement. This does not classify actions or intent. Updates are kept in browser memory and cleared when stopped.</div>
+              <div class="camera-controls">
+                <label class="consent-check">
+                  <input id="camera-consent" type="checkbox">
+                  <span>I confirm this is my space and everyone present is informed and consenting.</span>
+                </label>
+                <div class="camera-buttons">
+                  <button id="start-camera" class="camera-button primary" type="button">Start monitoring</button>
+                  <button id="stop-camera" class="camera-button stop" type="button" hidden>Stop monitoring</button>
+                </div>
+              </div>
+              <p id="camera-message" class="camera-message" role="status" aria-live="polite">No camera is active.</p>
+            </div>
+
+            <div class="scene-column">
+              <div class="section-title">
+                <div><h2>Live scene</h2><p>Estimates from the most recent analyzed frame</p></div>
+                <span class="section-badge">IN MEMORY ONLY</span>
+              </div>
+              <div class="stats-grid">
+                <article class="stat-card"><span>PEOPLE NOW</span><strong id="people-count">—</strong></article>
+                <article class="stat-card"><span>PEAK OCCUPANCY</span><strong id="occupancy-peak">—</strong></article>
+                <article class="stat-card"><span>AVG. OBSERVED</span><strong id="average-dwell">—</strong></article>
+                <article class="stat-card"><span>OTHER OBJECTS</span><strong id="object-count">—</strong></article>
+              </div>
+              <div id="scene-results" class="scene-results">
+                <div class="empty-state">Start monitoring to see supported object labels and anonymous people tracks.</div>
+              </div>
+              <div class="section-title timeline-title">
+                <div><h2>Five-second updates</h2><p>Posture, movement estimates, and view changes</p></div>
+                <span class="section-badge">MAX 12</span>
+              </div>
+              <div id="scene-timeline" class="scene-timeline" aria-live="polite">
+                <div class="empty-state">Updates appear here while monitoring is active.</div>
               </div>
             </div>
-          </section>
-
-          <div class="metrics-grid">
-            <article class="metric-card">
-              <div class="metric-top"><span>VISIBLE INTERFACES</span><span class="metric-icon green">⌁</span></div>
-              <div id="interface-count" class="metric-value">—</div>
-              <div class="metric-caption">Container network interfaces</div>
-              <div id="interface-summary" class="metric-foot">Waiting for data</div>
-            </article>
-            <article class="metric-card">
-              <div class="metric-top"><span>CACHED NEIGHBORS</span><span class="metric-icon blue">▦</span></div>
-              <div id="neighbor-count" class="metric-value">—</div>
-              <div class="metric-caption">Already present in the ARP cache</div>
-              <div class="metric-foot">No probing or network scans</div>
-            </article>
-            <article class="metric-card">
-              <div class="metric-top"><span>WI-FI RADIO</span><span class="metric-icon amber">⌁</span></div>
-              <div class="metric-value unavailable">Not exposed</div>
-              <div class="metric-caption">Host radio access is disabled</div>
-              <div class="metric-foot">No wireless scan performed</div>
-            </article>
-            <article class="metric-card">
-              <div class="metric-top"><span>BLUETOOTH</span><span class="metric-icon purple">ᛒ</span></div>
-              <div class="metric-value unavailable">Not exposed</div>
-              <div class="metric-caption">Host radio access is disabled</div>
-              <div class="metric-foot">No device discovery performed</div>
-            </article>
           </div>
-
-          <div class="section-heading" id="interfaces">
-            <div><h2>Network interfaces</h2><p>Live link state and cumulative traffic counters</p></div>
-            <span class="section-badge"><span class="tiny-dot"></span> AUTO-REFRESH · 4 SEC</span>
-          </div>
-          <div id="interface-list" class="interface-list">
-            <div class="empty-state">Reading available interfaces…</div>
-          </div>
-
-          <div class="section-heading devices-heading" id="devices">
-            <div><h2>Cached neighbors</h2><p>Entries the container has already learned; this is not a network scan</p></div>
-            <span id="neighbor-badge" class="section-badge">CONTAINER CACHE</span>
-          </div>
-          <div id="neighbor-list" class="table-wrap">
-            <div class="empty-state">Reading the local neighbor cache…</div>
-          </div>
-
-          <div class="section-heading radios-heading" id="radios">
-            <div><h2>Radio access</h2><p>Wireless features are deliberately not emulated</p></div>
-          </div>
-          <div class="radio-grid">
-            <article class="radio-card">
-              <div class="radio-title"><span class="radio-icon">⌁</span><div><h3>Wi-Fi discovery</h3><span class="unavailable-label">HOST HARDWARE NOT EXPOSED</span></div></div>
-              <p>Docker Desktop does not provide nearby access-point data to this container. Connect a separately reviewed, permission-based host integration to add this capability.</p>
-            </article>
-            <article class="radio-card">
-              <div class="radio-title"><span class="radio-icon bluetooth">ᛒ</span><div><h3>Bluetooth discovery</h3><span class="unavailable-label">HOST HARDWARE NOT EXPOSED</span></div></div>
-              <p>Bluetooth adapters and nearby devices are not available in this container. The app will not pair with or interrogate devices.</p>
-            </article>
-          </div>
-
-          <footer class="footer"><span>NMTorch <span class="footer-dot">·</span> Local, read-only observability</span><span>NO ACTIVE SCANNING <span class="footer-dot">·</span> NO RADIO CONTROL <span class="footer-dot">·</span> NO TELEMETRY</span></footer>
         </section>
-      </main>
-    </div>
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+        <section class="limits-panel">
+          <h2>Interpret results cautiously</h2>
+          <ul>
+            <li>Person IDs are anonymous, temporary tracking labels—not identity recognition. They reset when monitoring stops.</li>
+            <li>Arm/leg movement labels describe visible landmark changes only. Walking/running labels are rough heuristics. Facial expressions and emotions are not inferred; this is not a fall detector, safety alarm, or medical tool.</li>
+            <li>Occupancy and dwell time describe only what this camera currently sees. No calibrated zones, cross-camera tracking, or congestion claims are made.</li>
+            <li>Models can miss or mislabel people, poses, and objects. Keep monitoring consensual and stop it when no longer needed.</li>
+          </ul>
+        </section>
+
+        <footer class="footer"><span>NMTorch <span class="footer-dot">·</span> Local visual monitoring</span><span>NO RECORDING <span class="footer-dot">·</span> NO IDENTITY RECOGNITION <span class="footer-dot">·</span> NO TELEMETRY</span></footer>
+      </section>
+    </main>
   </body>
 </html>

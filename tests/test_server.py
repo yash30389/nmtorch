@@ -1,5 +1,5 @@
-import json
 import cv2
+import json
 import numpy as np
 import threading
 import unittest
@@ -7,56 +7,8 @@ import urllib.error
 import urllib.request
 from unittest.mock import patch
 
-from app.server import DashboardServer, DashboardHandler, _read_neighbors, _read_traffic_counters
-from app.vision import decode_object_detections
-
-
-class NetworkParsingTests(unittest.TestCase):
-    @patch(
-        "builtins.open",
-        return_value=__import__("io").StringIO(
-            "IP address       HW type     Flags       HW address            Mask     Device\n"
-            "172.20.0.1       0x1         0x2         02:42:aa:bb:cc:dd     *        eth0\n"
-            "172.20.0.2       0x1         0x0         00:00:00:00:00:00     *        eth0\n"
-        ),
-    )
-    def test_neighbor_cache_distinguishes_valid_and_cached_entries(self, _open):
-        self.assertEqual(
-            _read_neighbors(),
-            [
-                {
-                    "address": "172.20.0.1",
-                    "mac": "02:42:aa:bb:cc:dd",
-                    "state": "reachable",
-                    "interface": "eth0",
-                },
-                {
-                    "address": "172.20.0.2",
-                    "mac": "00:00:00:00:00:00",
-                    "state": "cached",
-                    "interface": "eth0",
-                },
-            ],
-        )
-
-    @patch(
-        "builtins.open",
-        return_value=__import__("io").StringIO(
-            "Inter-| Receive | Transmit\n"
-            " face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n"
-            "  eth0: 1024 8 0 0 0 0 0 1 2048 9 0 0 0 0 0 0\n"
-        ),
-    )
-    def test_traffic_counters_read_container_bytes(self, _open):
-        self.assertEqual(
-            _read_traffic_counters(),
-            {
-                "eth0": {
-                    "received_bytes": 1024,
-                    "transmitted_bytes": 2048,
-                }
-            },
-        )
+from app.server import DashboardServer, DashboardHandler
+from app.vision import decode_movenet_pose, decode_object_detections
 
 
 class HttpEndpointTests(unittest.TestCase):
@@ -76,29 +28,17 @@ class HttpEndpointTests(unittest.TestCase):
     def test_dashboard_and_health_endpoints(self):
         with urllib.request.urlopen(self.base_url + "/") as response:
             self.assertEqual(response.status, 200)
-            self.assertIn(b"NMTorch", response.read())
+            page = response.read()
+            self.assertIn(b"Visual monitor", page)
+            self.assertNotIn(b"Network interfaces", page)
 
         with urllib.request.urlopen(self.base_url + "/health") as response:
             self.assertEqual(json.load(response), {"status": "ok"})
 
-    @patch(
-        "app.server.get_status",
-        return_value={
-            "scope": "Docker container only",
-            "interfaces": [],
-            "neighbors": [],
-            "radios": {
-                "wifi": {"available": False},
-                "bluetooth": {"available": False},
-            },
-        },
-    )
-    def test_status_endpoint_reports_scope_and_radio_boundaries(self, _status):
-        with urllib.request.urlopen(self.base_url + "/api/status") as response:
-            payload = json.load(response)
-        self.assertEqual(payload["scope"], "Docker container only")
-        self.assertFalse(payload["radios"]["wifi"]["available"])
-        self.assertFalse(payload["radios"]["bluetooth"]["available"])
+    def test_network_status_endpoint_is_removed(self):
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(self.base_url + "/api/status")
+        self.assertEqual(error.exception.code, 404)
 
     def test_unknown_routes_return_404(self):
         with self.assertRaises(urllib.error.HTTPError) as error:
@@ -184,6 +124,20 @@ class VisionAnalyzerTests(unittest.TestCase):
         result = self.analyzer.analyze(encoded.tobytes())
         self.assertEqual(result["objects"], [])
         self.assertEqual(result["detections"], [])
+        self.assertEqual(result["people_count"], 0)
+
+    def test_movenet_pose_coordinates_map_from_crop_to_frame(self):
+        prediction = np.zeros((1, 1, 1, 17, 3), dtype=np.float32)
+        prediction[0, 0, 0, 0] = [0.25, 0.5, 0.8]
+        pose = decode_movenet_pose(prediction, (10, 20, 110, 220), 320, 240)
+        self.assertEqual(pose[0]["name"], "nose")
+        self.assertAlmostEqual(pose[0]["x"], 0.1875)
+        self.assertAlmostEqual(pose[0]["y"], 70 / 240)
+        self.assertAlmostEqual(pose[0]["score"], 0.8)
+
+    def test_movenet_pose_rejects_unexpected_landmark_count(self):
+        with self.assertRaisesRegex(ValueError, "unsupported landmark count"):
+            decode_movenet_pose(np.zeros((1, 5, 3)), (0, 0, 10, 10), 320, 240)
 
     def test_object_decoder_filters_weak_boxes_and_suppresses_duplicates(self):
         prediction = np.array(

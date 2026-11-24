@@ -1,7 +1,5 @@
 import json
 import os
-import socket
-import struct
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -13,109 +11,10 @@ STATIC_FILES = {
     "/static/app.css": ("app.css", "text/css; charset=utf-8"),
     "/static/app.js": ("app.js", "text/javascript; charset=utf-8"),
 }
-POLL_INTERVAL_SECONDS = 4
 MAX_CAMERA_FRAME_BYTES = 256 * 1024
 CAMERA_FRAME_CONTENT_TYPE = "image/jpeg"
 _camera_analyzer = None
 _camera_lock = threading.Lock()
-
-
-def _read_optional(path):
-    try:
-        return Path(path).read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return None
-
-
-def _read_traffic_counters():
-    counters = {}
-    with open("/proc/net/dev", encoding="utf-8") as device_file:
-        for line in device_file.readlines()[2:]:
-            if ":" not in line:
-                continue
-            name, values = line.split(":", 1)
-            numbers = values.split()
-            if len(numbers) >= 9:
-                counters[name.strip()] = {
-                    "received_bytes": int(numbers[0]),
-                    "transmitted_bytes": int(numbers[8]),
-                }
-    return counters
-
-
-def _read_ipv4_address(interface_name):
-    try:
-        import fcntl
-    except ImportError:
-        return None
-
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            request = struct.pack("256s", interface_name.encode("utf-8")[:15])
-            result = fcntl.ioctl(sock.fileno(), 0x8915, request)
-            return socket.inet_ntoa(result[20:24])
-    except OSError:
-        return None
-
-
-def _read_interfaces():
-    traffic = _read_traffic_counters()
-    interfaces = []
-    for name in sorted(os.listdir("/sys/class/net")):
-        interface_dir = Path("/sys/class/net") / name
-        counters = traffic.get(name, {})
-        interfaces.append(
-            {
-                "name": name,
-                "type": "wireless"
-                if (interface_dir / "wireless").is_dir()
-                else "container network",
-                "state": _read_optional(interface_dir / "operstate") or "unknown",
-                "ipv4": _read_ipv4_address(name),
-                "mac": _read_optional(interface_dir / "address"),
-                "received_bytes": counters.get("received_bytes", 0),
-                "transmitted_bytes": counters.get("transmitted_bytes", 0),
-            }
-        )
-    return interfaces
-
-
-def _read_neighbors():
-    neighbors = []
-    with open("/proc/net/arp", encoding="utf-8") as arp_file:
-        for line in arp_file.readlines()[1:]:
-            fields = line.split()
-            if len(fields) < 6:
-                continue
-            flags = int(fields[2], 16)
-            neighbors.append(
-                {
-                    "address": fields[0],
-                    "mac": fields[3],
-                    "state": "reachable" if flags & 0x2 else "cached",
-                    "interface": fields[5],
-                }
-            )
-    return neighbors
-
-
-def get_status():
-    return {
-        "scope": "Docker container only",
-        "poll_interval_seconds": POLL_INTERVAL_SECONDS,
-        "interfaces": _read_interfaces(),
-        "neighbors": _read_neighbors(),
-        "radios": {
-            "wifi": {
-                "available": False,
-                "message": "Host Wi-Fi radios are not exposed to this container.",
-            },
-            "bluetooth": {
-                "available": False,
-                "message": "Host Bluetooth radios are not exposed to this container.",
-            },
-        },
-    }
 
 
 def analyze_camera_frame(frame):
@@ -136,9 +35,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         route = urlsplit(self.path).path
         if route == "/health":
             self._send_json({"status": "ok"})
-            return
-        if route == "/api/status":
-            self._send_json(get_status())
             return
         if route == "/":
             self._send_file(APP_DIR / "static" / "index.html", "text/html; charset=utf-8")

@@ -12,7 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 COPY requirements.txt /tmp/requirements.txt
 RUN python -m pip install --requirement /tmp/requirements.txt
-RUN mkdir -p /opt/nmtorch && python -c "import urllib.request; base='https://raw.githubusercontent.com/chuanqi305/MobileNet-SSD/bb17b6c3eef36d80be441ae8e5339be66e8e3b7a/'; files={'deploy.prototxt':'MobileNetSSD_deploy.prototxt','mobilenet_iter_73000.caffemodel':'mobilenet_iter_73000.caffemodel','LICENSE':'MobileNet-SSD-LICENSE'}; [urllib.request.urlretrieve(base + source, '/opt/nmtorch/' + target) for source, target in files.items()]"
+RUN mkdir -p /opt/nmtorch && python -c "import hashlib, urllib.request; base='https://raw.githubusercontent.com/chuanqi305/MobileNet-SSD/bb17b6c3eef36d80be441ae8e5339be66e8e3b7a/'; files={'deploy.prototxt':'MobileNetSSD_deploy.prototxt','mobilenet_iter_73000.caffemodel':'mobilenet_iter_73000.caffemodel','LICENSE':'MobileNet-SSD-LICENSE'}; [urllib.request.urlretrieve(base + source, '/opt/nmtorch/' + target) for source, target in files.items()]; model='/opt/nmtorch/movenet_lightning_float16.tflite'; urllib.request.urlretrieve('https://tfhub.dev/google/lite-model/movenet/singlepose/lightning/tflite/float16/4?lite-format=tflite', model); digest=hashlib.sha256(open(model,'rb').read()).hexdigest(); assert digest == '0fac2226112d0371903ca86e3853cec24ef603a0b2f96f589b180f0ebdd135ab', 'Unexpected MoveNet model digest: ' + digest"
 COPY --chown=10001:10001 app/ /app/
 
 FROM base AS test
